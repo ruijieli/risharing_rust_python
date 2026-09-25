@@ -1,0 +1,71 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "评估 PPO 并可视化（Rust 环境）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "training.evaluate",
+      "python": "/opt/anaconda3/envs/RL/bin/python",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 Rust Python 扩展",
+      "args": ["--config", "config.toml", "--algorithm", "ppo"]
+    },
+    {
+      "name": "评估 DQN 并可视化（Rust 环境）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "training.evaluate",
+      "python": "/opt/anaconda3/envs/RL/bin/python",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 Rust Python 扩展",
+      "args": ["--config", "config.toml", "--algorithm", "dqn"]
+    },
+    {
+      "name": "评估无调度（Rust 环境）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "training.evaluate",
+      "python": "/opt/anaconda3/envs/RL/bin/python",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 Rust Python 扩展",
+      "args": ["--config", "config.toml", "--algorithm", "none"]
+    },
+    {
+      "name": "训练 PPO（Rust 内核）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "training.train",
+      "python": "/opt/anaconda3/envs/RL/bin/python",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 Rust Python 扩展",
+      "args": ["--config", "config.toml", "--algorithm", "ppo"]
+    },
+    {
+      "name": "训练 DQN（Rust 内核）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "training.train",
+      "python": "/opt/anaconda3/envs/RL/bin/python",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 Rust Python 扩展",
+      "args": ["--config", "config.toml", "--algorithm", "dqn"]
+    },
+    {
+      "name": "检查 RL 环境（小规模）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "training.train",
+      "python": "/opt/anaconda3/envs/RL/bin/python",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "构建 Rust Python 扩展",
+      "args": ["--config", "config.smoke.toml", "--algorithm", "ppo", "--check-only"]
+    }
+  ]
+}

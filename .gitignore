@@ -1,0 +1,5 @@
+/target/
+/output/
+_rust_core*.so
+__pycache__/
+*.pyc

@@ -1,0 +1,53 @@
+[geo]
+max_lat = 30.72
+max_lon = 104.172227
+min_lat = 30.60
+min_lon = 103.98
+
+[simulation]
+passenger_file = "data/filtered_passengers_selected.csv"
+num_cars = 500
+distance_threshold_m = 1000.0
+position_update_interval_s = 10
+start_time_s = 3600
+end_time_s = 10800
+batch_interval_s = 10
+dispatch_cycle_s = 120
+sample_size = 3000
+random_seed = 42
+visualization = false
+visualization_step_delay_ms = 10000
+keep_visualization_alive = false
+
+[osrm]
+base_url = "http://127.0.0.1:5001"
+profile = "driving"
+max_concurrency = 12
+
+[python]
+algorithm_dir = "python_algorithms"
+matching = "maximum"
+dispatch = "ppo"
+h3_resolution = 7
+ppo_model = "models/ppo_ridesharing_model.zip"
+dqn_model = "models/dqn_ridesharing_model.zip"
+
+[training]
+algorithm = "ppo"
+total_timesteps = 200
+ppo_n_steps = 180
+ppo_batch_size = 60
+ppo_learning_rate = 1e-5
+ppo_clip_range = 0.02
+ppo_ent_coef = 0.0005
+
+dqn_learning_rate = 1e-4
+dqn_total_timesteps = 200
+dqn_buffer_size = 10000
+dqn_learning_starts = 1000
+dqn_batch_size = 64
+
+[visualization]
+host = "127.0.0.1"
+port = 8000
+vector_style_url = "http://127.0.0.1:8081/styles/basic-preview/style.json"

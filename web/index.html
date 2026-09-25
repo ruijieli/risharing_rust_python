@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>成都网约车仿真 · Rust</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css">
+  <style>
+    html,body,#map{width:100%;height:100%;margin:0}body{overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#e8edf2}
+    .panel{position:absolute;z-index:10;top:16px;left:16px;width:270px;padding:14px 16px;color:#eef6ff;background:rgba(13,27,42,.9);border-radius:10px;box-shadow:0 10px 32px #0004}.panel h1{margin:0 0 6px;font-size:18px}.status{font-size:12px;color:#8fc7ef;margin-bottom:10px}.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}.stat{padding:8px;background:#ffffff12;border-radius:6px}.label{display:block;font-size:12px;color:#adc0cf}.value{font-size:18px}.legend{position:absolute;z-index:10;top:16px;right:16px;padding:10px 12px;background:#fffffff0;border-radius:8px;box-shadow:0 6px 22px #0003;font-size:13px}.row{display:flex;align-items:center;gap:8px;margin:5px}.dot{width:10px;height:10px;border-radius:50%}.grid-button{width:100%;margin-top:8px;padding:7px 10px;border:0;border-radius:6px;color:#17324d;background:#dbeafe;cursor:pointer;font-weight:600}.grid-button:hover{background:#bfdbfe}
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<section class="panel"><h1>成都网约车仿真 · Rust</h1><div id="status" class="status">正在初始化…</div><div class="stats">
+  <div class="stat"><span class="label">等待乘客</span><strong id="pax" class="value">0</strong></div>
+  <div class="stat"><span class="label">载客车辆</span><strong id="trip" class="value">0</strong></div>
+  <div class="stat"><span class="label">空闲车辆</span><strong id="idle" class="value">0</strong></div>
+  <div class="stat"><span class="label">接驾/调度</span><strong id="moving" class="value">0</strong></div>
+</div></section>
+<aside class="legend"><div class="row"><i class="dot" style="background:#7c3aed"></i>乘客</div><div class="row"><i class="dot" style="background:#ef4444"></i>载客中</div><div class="row"><i class="dot" style="background:#22c55e"></i>空闲</div><div class="row"><i class="dot" style="background:#f97316"></i>前往接客</div><div class="row"><i class="dot" style="background:#eab308"></i>空驶调度</div><button id="grid-toggle" class="grid-button">隐藏 H3 网格</button></aside>
+<script type="module">
+import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs';
+const empty=()=>({type:'FeatureCollection',features:[]});
+const map=new maplibregl.Map({container:'map',style:'__VECTOR_STYLE_URL__',center:[104.0668,30.66],zoom:11.8});
+let ready=false,latestPax=empty(),latestCars=empty(),gridVisible=true;
+map.on('load',async()=>{const grid=await fetch('/grid').then(r=>r.json());map.addSource('h3-grid',{type:'geojson',data:grid});map.addLayer({id:'h3-grid-fill',type:'fill',source:'h3-grid',paint:{'fill-color':'#2563eb','fill-opacity':.08}});map.addLayer({id:'h3-grid-line',type:'line',source:'h3-grid',paint:{'line-color':'#1d4ed8','line-width':1.5,'line-opacity':.8}});map.addLayer({id:'h3-grid-label',type:'symbol',source:'h3-grid',layout:{'text-field':['to-string',['get','grid_index']],'text-size':11},paint:{'text-color':'#1e3a8a','text-halo-color':'#fff','text-halo-width':1.2}});map.addSource('pax',{type:'geojson',data:latestPax});map.addLayer({id:'pax',type:'circle',source:'pax',paint:{'circle-radius':4,'circle-color':'#7c3aed','circle-stroke-width':.7,'circle-stroke-color':'#fff'}});map.addSource('cars',{type:'geojson',data:latestCars});map.addLayer({id:'cars',type:'circle',source:'cars',paint:{'circle-radius':5,'circle-color':['match',['get','state'],'on_trip','#ef4444','idle','#22c55e','en_route_to_pickup','#f97316','empty_trip','#eab308','#64748b'],'circle-stroke-width':.7,'circle-stroke-color':'#fff'}});ready=true;update()});
+document.querySelector('#grid-toggle').addEventListener('click',e=>{gridVisible=!gridVisible;const visibility=gridVisible?'visible':'none';['h3-grid-fill','h3-grid-line','h3-grid-label'].forEach(id=>map.setLayoutProperty(id,'visibility',visibility));e.currentTarget.textContent=gridVisible?'隐藏 H3 网格':'显示 H3 网格'});
+const features=(items,coords,state)=>items.flatMap(item=>{const p=coords[item.name];return p?[{type:'Feature',geometry:{type:'Point',coordinates:p},properties:{state}}]:[]});
+function update(){if(!ready)return;map.getSource('pax').setData(latestPax);map.getSource('cars').setData(latestCars)}
+async function refresh(){try{const t=performance.now(),r=await fetch('/get_coordinates',{cache:'no-store'}),d=await r.json();if(d.status){status.textContent=d.message;return}const c=d.geoCoordMap||{},p=features(d.pax,c,'pax'),trip=features(d.car_on_trip,c,'on_trip'),idle=features(d.car_idle,c,'idle'),pickup=features(d.car_en_route_to_pickup,c,'en_route_to_pickup'),emptyCars=features(d.car_empty_trip,c,'empty_trip');latestPax={type:'FeatureCollection',features:p};latestCars={type:'FeatureCollection',features:[...trip,...idle,...pickup,...emptyCars]};update();document.querySelector('#pax').textContent=p.length;document.querySelector('#trip').textContent=trip.length;document.querySelector('#idle').textContent=idle.length;document.querySelector('#moving').textContent=pickup.length+emptyCars.length;document.querySelector('#status').textContent=`位置已更新 · ${Math.round(performance.now()-t)} ms · ${latestCars.features.length} 辆车`}catch(e){document.querySelector('#status').textContent='数据连接失败，正在重试';console.error(e)}}
+refresh();setInterval(refresh,1000);
+</script>
+</body></html>
