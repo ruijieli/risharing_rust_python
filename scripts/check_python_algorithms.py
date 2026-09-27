@@ -21,8 +21,9 @@ dispatch_input = {
     "model_paths": {"ppo": "unused", "dqn": "unused"},
 }
 action = json.loads(api.dispatch_action_json(json.dumps(dispatch_input), "random"))
-assert action["kind"] == "matrix" and len(action["values"]) == 3, action
-assert dispatch.action_mode("none") == "continuous"
+assert action["kind"] == "flow_matrix" and len(action["counts"]) == 3, action
+assert [sum(row) for row in action["counts"]] == [1, 0, 0], action
+assert dispatch.action_mode("none") == "none"
 assert dispatch.action_mode("ppo") == "continuous"
 assert dispatch.action_mode("dqn") == "discrete"
 none_action = dispatch.evaluation_action(
@@ -30,5 +31,5 @@ none_action = dispatch.evaluation_action(
     "none",
     dispatch_input["model_paths"],
 )
-assert none_action.shape == (3, 3) and not none_action.any(), none_action
+assert none_action == 0, none_action
 print("Python algorithm boundary: OK")

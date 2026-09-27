@@ -14,6 +14,9 @@ Rust 负责：
 - 实时快照和 `8000` 可视化服务。
 - 强化学习环境的观测、动作验证与执行、状态推进、奖励和 episode 时间。
 
+Rust 源码中，`lib.rs` 只注册模块；Python 接口位于 `python_api.rs`，Gymnasium
+环境语义位于 `environment.rs`，具体仿真业务位于 `simulator.rs`。
+
 Python 只负责：
 
 - `python_algorithms/matching.py`：派单匹配；
@@ -22,9 +25,10 @@ Python 只负责：
 - `training/train.py`：Stable-Baselines3 的 PPO/DQN 训练入口。
 - `training/evaluate.py`：模型评估、测速和实时可视化入口。
 
-Python 调度算法只接收 Rust 生成的网格观测并返回动作矩阵或离散动作，不再
-处理 H3、车辆坐标或抽样执行。后续新增算法主要编辑 `python_algorithms`，
-内核数据结构不需要修改。
+Python 调度算法接收Rust生成的网格观测，负责把PPO比例、DQN离散动作或其他
+算法结果转换成整数车辆流量矩阵。Rust只接收 `None` 或最终整数矩阵，不处理
+具体算法的动作形式。后续新增算法主要编辑 `python_algorithms`，内核数据结构
+不需要修改。
 
 ## 前置服务
 

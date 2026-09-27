@@ -86,6 +86,14 @@ impl RustEnvironment {
         })
     }
 
+    pub fn step_flow_matrix(&mut self, counts: Vec<Vec<usize>>) -> Result<EnvironmentStep> {
+        self.step(DispatchAction::FlowMatrix { counts })
+    }
+
+    pub fn step_none(&mut self) -> Result<EnvironmentStep> {
+        self.step(DispatchAction::None)
+    }
+
     pub fn start_visualization(&mut self) -> Result<String> {
         if let Some(url) = &self.visualization_url {
             self.publish_snapshot();

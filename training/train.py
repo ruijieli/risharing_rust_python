@@ -36,8 +36,7 @@ def main() -> None:
     config = load_config(config_path)
     training = config["training"]
     algorithm = args.algorithm or training["algorithm"]
-    mode = "continuous" if algorithm == "ppo" else "discrete"
-    env = RustRideSharingEnv(config_path, action_mode=mode)
+    env = RustRideSharingEnv(config_path, dispatch_algorithm=algorithm)
     check_env(env, warn=True)
     if args.check_only:
         print(f"Rust RL environment OK: algorithm={algorithm}, grids={env.num_grids}")

@@ -21,8 +21,7 @@ pub struct Grid {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DispatchAction {
     None,
-    Matrix { values: Vec<Vec<f64>> },
-    Discrete { value: usize },
+    FlowMatrix { counts: Vec<Vec<usize>> },
 }
 
 #[derive(Clone, Debug)]
@@ -124,6 +123,7 @@ impl Grid {
         values
     }
 
+    // 将所有 H3 六边形网格转换成 GeoJSON 格式，供 Web 前端（如 Leaflet、Mapbox）绘制地图使用。
     pub fn geojson(&self) -> serde_json::Value {
         let features: Vec<_> = self
             .cells

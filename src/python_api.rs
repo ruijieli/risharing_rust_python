@@ -2,10 +2,7 @@ use std::path::Path;
 
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
 
-use crate::{
-    environment::{EnvironmentStep, RustEnvironment},
-    grid::DispatchAction,
-};
+use crate::environment::{EnvironmentStep, RustEnvironment};
 
 type PythonStep = (Vec<f32>, f64, bool, bool, String);
 
@@ -45,19 +42,16 @@ impl RustSimulation {
         self.environment.start_visualization().map_err(py_error)
     }
 
-    fn step_continuous(&mut self, action: Vec<Vec<f64>>) -> PyResult<PythonStep> {
-        self.step_action(DispatchAction::Matrix { values: action })
-    }
-
-    fn step_discrete(&mut self, action: usize) -> PyResult<PythonStep> {
-        self.step_action(DispatchAction::Discrete { value: action })
-    }
-}
-
-impl RustSimulation {
-    fn step_action(&mut self, action: DispatchAction) -> PyResult<PythonStep> {
+    fn step_flow_matrix(&mut self, counts: Vec<Vec<usize>>) -> PyResult<PythonStep> {
         self.environment
-            .step(action)
+            .step_flow_matrix(counts)
+            .map(environment_step_to_python)
+            .map_err(py_error)
+    }
+
+    fn step_none(&mut self) -> PyResult<PythonStep> {
+        self.environment
+            .step_none()
             .map(environment_step_to_python)
             .map_err(py_error)
     }

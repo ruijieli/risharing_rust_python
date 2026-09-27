@@ -49,7 +49,7 @@ def main() -> None:
         if key.endswith("_model")
     }
 
-    env = RustRideSharingEnv(config_path, action_mode=action_mode)
+    env = RustRideSharingEnv(config_path, dispatch_algorithm=algorithm)
     observation, _ = env.reset()
     print(f"调度算法：{algorithm}；动作模式：{action_mode}")
     visualization_enabled = bool(config["simulation"]["visualization"])

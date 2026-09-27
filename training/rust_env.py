@@ -1,6 +1,7 @@
 """Thin Gymnasium adapter; environment state, H3 and transitions live in Rust."""
 
 import json
+import sys
 from pathlib import Path
 
 import gymnasium as gym
@@ -15,36 +16,55 @@ class RustRideSharingEnv(gym.Env):
 
     metadata = {"render_modes": ["human"]}
 
-    def __init__(self, config_path: str | Path, 
-                 action_mode: str = "continuous"):
+    def __init__(self, config_path: str | Path,
+                 dispatch_algorithm: str = "ppo"):
         super().__init__()
         self.config_path = Path(config_path).resolve()
-        self.action_mode = action_mode
+        try:
+            import tomllib
+        except ModuleNotFoundError:
+            import tomli as tomllib
+        with self.config_path.open("rb") as handle:
+            config = tomllib.load(handle)
+        algorithm_dir = (self.config_path.parent / config["python"]["algorithm_dir"]).resolve()
+        if str(algorithm_dir) not in sys.path:
+            sys.path.insert(0, str(algorithm_dir))
+        import dispatch
+        self.dispatch = dispatch
+        self.dispatch_algorithm = dispatch_algorithm
+        self.action_mode = dispatch.action_mode(dispatch_algorithm)
         self.core = RustSimulation(str(self.config_path))
         self.num_grids = int(self.core.num_grids())
-        if action_mode == "continuous":
+        if self.action_mode == "none":
+            self.action_space = spaces.Discrete(1)
+        elif self.action_mode == "continuous":
             self.action_space = spaces.Box(
                 0.0, 1.0, shape=(self.num_grids, self.num_grids), dtype=np.float32
             )
-        elif action_mode == "discrete":
+        elif self.action_mode == "discrete":
             self.action_space = spaces.Discrete(self.num_grids + 1)
         else:
-            raise ValueError("action_mode must be continuous or discrete")
+            raise ValueError("action_mode must be none, continuous or discrete")
         self.observation_space = spaces.Box(
             0.0, np.inf, shape=(self.num_grids,), dtype=np.float32
         )
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
-        return np.asarray(self.core.reset(seed), dtype=np.float32), {}
+        self._observation = np.asarray(self.core.reset(seed), dtype=np.float32)
+        return self._observation.copy(), {}
 
     def step(self, action):
-        if self.action_mode == "continuous":
-            result = self.core.step_continuous(np.asarray(action, dtype=np.float64).tolist())
+        decision = self.dispatch.training_action_to_decision(
+            self._observation, self.dispatch_algorithm, action
+        )
+        if decision["kind"] == "none":
+            result = self.core.step_none()
         else:
-            result = self.core.step_discrete(int(np.asarray(action).item()))
+            result = self.core.step_flow_matrix(decision["counts"])
         observation, reward, terminated, truncated, info_json = result
-        return (np.asarray(observation, dtype=np.float32), float(reward),
+        self._observation = np.asarray(observation, dtype=np.float32)
+        return (self._observation.copy(), float(reward),
                 bool(terminated), bool(truncated), json.loads(info_json))
 
     def start_visualization(self) -> str:
