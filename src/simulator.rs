@@ -5,15 +5,28 @@ use std::{
 
 use anyhow::{Context, Result};
 use rand::{Rng, SeedableRng, rngs::StdRng, seq::SliceRandom};
+use serde::Serialize;
 
 use crate::{
     config::Config,
     grid::{DispatchAction, DispatchTarget, Grid},
     model::{Car, CarState, Passenger, Point, WaitingPassenger},
     osrm::{OsrmClient, interpolate},
-    python_bridge::PythonAlgorithms,
-    web::{SharedSnapshot, build_snapshot},
 };
+
+#[derive(Serialize)]
+struct AlgorithmPoint<'a> {
+    id: &'a str,
+    lat: f64,
+    lon: f64,
+}
+
+#[derive(Serialize)]
+pub struct MatchingInput<'a> {
+    cars: Vec<AlgorithmPoint<'a>>,
+    passengers: Vec<AlgorithmPoint<'a>>,
+    threshold_m: f64,
+}
 
 pub struct Simulator {
     pub config: Config,
@@ -24,8 +37,8 @@ pub struct Simulator {
     pub total_served: u64,
     next_passenger: usize,
     osrm: OsrmClient,
-    algorithms: PythonAlgorithms,
     grid: Grid,
+    pending_passengers: Vec<Passenger>,
 }
 
 impl Simulator {
@@ -49,7 +62,6 @@ impl Simulator {
             })
             .collect();
         let osrm = OsrmClient::new(config.osrm.clone())?;
-        let algorithms = PythonAlgorithms::new(&config);
         let grid = Grid::new(&config)?;
         Ok(Self {
             current_time: config.simulation.start_time_s,
@@ -60,8 +72,8 @@ impl Simulator {
             total_served: 0,
             next_passenger: 0,
             osrm,
-            algorithms,
             grid,
+            pending_passengers: Vec::new(),
         })
     }
 
@@ -80,74 +92,54 @@ impl Simulator {
         Ok(())
     }
 
-    pub async fn run(&mut self, snapshot: Option<SharedSnapshot>) -> Result<()> {
-        self.validate_osrm().await?;
-        while self.current_time < self.config.simulation.end_time_s {
-            self.step().await?;
-            if let Some(shared) = &snapshot {
-                *shared.write().await = Some(build_snapshot(&self.waiting, &self.cars));
-                let delay = self.config.simulation.visualization_step_delay_ms;
-                if delay > 0 {
-                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    async fn step(&mut self) -> Result<()> {
-        let passengers = self.current_passengers();
-        let available_indices: Vec<usize> = self
+    /// Return the matching candidates for the current 10-second batch.
+    /// Python owns the algorithm choice and returns only `(car_id, passenger_id)` pairs.
+    pub fn matching_input(&mut self) -> MatchingInput<'_> {
+        self.pending_passengers = self.current_passengers();
+        let cars = self
             .cars
             .iter()
-            .enumerate()
-            .filter(|(_, car)| {
-                matches!(car.state, CarState::Idle | CarState::EmptyTrip)
-                    && car.position().is_some()
+            .filter(|car| matches!(car.state, CarState::Idle | CarState::EmptyTrip))
+            .filter_map(|car| {
+                car.position().map(|p| AlgorithmPoint {
+                    id: &car.id,
+                    lat: p.lat,
+                    lon: p.lon,
+                })
             })
-            .map(|(index, _)| index)
             .collect();
-        if !available_indices.is_empty() && !passengers.is_empty() {
-            let car_refs: Vec<&Car> = available_indices
-                .iter()
-                .map(|&index| &self.cars[index])
-                .collect();
-            let matches = self.algorithms.matching(
-                &car_refs,
-                &passengers,
-                self.config.simulation.distance_threshold_m,
-            )?;
+        let passengers = self
+            .pending_passengers
+            .iter()
+            .map(|p| AlgorithmPoint {
+                id: &p.id,
+                lat: p.start_lat,
+                lon: p.start_lon,
+            })
+            .collect();
+        MatchingInput {
+            cars,
+            passengers,
+            threshold_m: self.config.simulation.distance_threshold_m,
+        }
+    }
+
+    /// Execute one simulation micro-step after Python has supplied matching pairs.
+    pub async fn advance_step(
+        &mut self,
+        matches: Vec<(String, String)>,
+        action: Option<DispatchAction>,
+    ) -> Result<f64> {
+        let served_before = self.total_served;
+        let passengers = std::mem::take(&mut self.pending_passengers);
+        if !passengers.is_empty() {
             self.plan_matches(matches, passengers).await?;
         }
-
-        if (self.current_time - self.config.simulation.start_time_s)
-            .is_multiple_of(self.config.simulation.dispatch_cycle_s)
-        {
-            self.dispatch().await?;
+        if let Some(action) = action {
+            self.dispatch_action(&action).await?;
         }
         self.update_positions();
         self.current_time += self.config.simulation.batch_interval_s;
-        Ok(())
-    }
-
-    /// Advance one RL decision period. Python chooses dispatch targets once;
-    /// matching, routing, time and vehicle transitions remain in Rust.
-    pub async fn training_cycle(&mut self, action: DispatchAction) -> Result<f64> {
-        let served_before = self.total_served;
-        let micro_steps = (self.config.simulation.dispatch_cycle_s
-            / self.config.simulation.batch_interval_s)
-            .max(1);
-        for micro_step in 0..micro_steps {
-            if self.current_time >= self.config.simulation.end_time_s {
-                break;
-            }
-            self.match_current_batch().await?;
-            if micro_step == 0 {
-                self.dispatch_action(&action).await?;
-            }
-            self.update_positions();
-            self.current_time += self.config.simulation.batch_interval_s;
-        }
         Ok((self.total_served - served_before) as f64)
     }
 
@@ -162,33 +154,6 @@ impl Simulator {
     }
     pub fn done(&self) -> bool {
         self.current_time >= self.config.simulation.end_time_s
-    }
-
-    async fn match_current_batch(&mut self) -> Result<()> {
-        let passengers = self.current_passengers();
-        let available_indices: Vec<usize> = self
-            .cars
-            .iter()
-            .enumerate()
-            .filter(|(_, car)| {
-                matches!(car.state, CarState::Idle | CarState::EmptyTrip)
-                    && car.position().is_some()
-            })
-            .map(|(index, _)| index)
-            .collect();
-        if !available_indices.is_empty() && !passengers.is_empty() {
-            let car_refs: Vec<&Car> = available_indices
-                .iter()
-                .map(|&index| &self.cars[index])
-                .collect();
-            let matches = self.algorithms.matching(
-                &car_refs,
-                &passengers,
-                self.config.simulation.distance_threshold_m,
-            )?;
-            self.plan_matches(matches, passengers).await?;
-        }
-        Ok(())
     }
 
     fn current_passengers(&mut self) -> Vec<Passenger> {
@@ -263,21 +228,6 @@ impl Simulator {
             self.total_served += 1;
         }
         Ok(())
-    }
-
-    async fn dispatch(&mut self) -> Result<()> {
-        let idle_indices: Vec<usize> = self
-            .cars
-            .iter()
-            .enumerate()
-            .filter(|(_, car)| car.state == CarState::Idle && car.position().is_some())
-            .map(|(index, _)| index)
-            .collect();
-        if idle_indices.is_empty() {
-            return Ok(());
-        }
-        let action = self.algorithms.dispatch(&self.observation())?;
-        self.dispatch_action(&action).await
     }
 
     async fn dispatch_action(&mut self, action: &DispatchAction) -> Result<()> {

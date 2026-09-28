@@ -15,7 +15,8 @@ Rust 负责：
 - 强化学习环境的观测、动作验证与执行、状态推进、奖励和 episode 时间。
 
 Rust 源码中，`lib.rs` 只注册模块；Python 接口位于 `python_api.rs`，Gymnasium
-环境语义位于 `environment.rs`，具体仿真业务位于 `simulator.rs`。
+环境语义位于 `environment.rs`，具体仿真业务位于 `simulator.rs`。Rust 只作为
+Python 扩展被调用，不会回调 Python。
 
 Python 只负责：
 
@@ -25,10 +26,9 @@ Python 只负责：
 - `training/train.py`：调用已注册 trainer 的通用训练入口；
 - `training/evaluate.py`：模型评估、测速和实时可视化入口。
 
-Python 调度算法接收Rust生成的网格观测，负责把PPO比例、DQN离散动作或其他
-算法结果转换成整数车辆流量矩阵。Rust只接收 `None` 或最终整数矩阵，不处理
-具体算法的动作形式。后续新增算法主要编辑 `python_algorithms`，内核数据结构
-不需要修改。
+Python 负责在每个小步计算车辆匹配，并将匹配关系与调度动作提交给 Rust。
+调度算法接收 Rust 生成的网格观测，负责把 PPO 比例、DQN 离散动作或其他
+算法结果转换成整数车辆流量矩阵。后续新增算法只需编辑 `python_algorithms`。
 
 ## 前置服务
 
@@ -38,35 +38,8 @@ Python 调度算法接收Rust生成的网格观测，负责把PPO比例、DQN离
 
 ## 首次构建
 
-```bash
-cd /Users/liuqinghua/Documents/Codex/TS_REVISE/ridesharing_chengdu_rust_main
-conda activate RL
-export PYO3_PYTHON="$(which python)"
-cargo build --release
-```
-
-首次构建需要从 crates.io 下载 Rust 依赖，以后可以离线增量构建。
-构建脚本会将当前 Conda Python 的动态库目录写入 macOS 二进制的
-`rpath`，因此构建前必须先激活最终运行时使用的 Python 环境。
-
-## 运行
-
-```bash
-conda activate RL
-export PYO3_PYTHON="$(which python)"
-cargo run --release -- config.toml
-```
-
-也可以使用一键脚本：
-
-```bash
-./scripts/run.sh
-```
-
-打开 `http://127.0.0.1:8000`。仿真完成后，若
-`keep_visualization_alive = true`，页面继续保留，终端按 `Ctrl+C` 退出。
-
-这个 Rust 二进制入口用于无 Gymnasium 的批处理仿真。算法开发者通常不需要使用它。
+学生不需要手动编译或运行 Rust。首次执行 `./scripts/train.sh` 或
+`./scripts/evaluate.sh` 时，脚本会自动构建 `_rust_core` Python 扩展。
 
 ## 强化学习训练
 
@@ -124,8 +97,8 @@ model_path = "models/ppo_ridesharing_model.zip"
 ```
 
 也可以临时覆盖配置，例如 `./scripts/evaluate.sh none config.toml`。新增调度算法
-只需在 `python_algorithms/dispatch.py` 注册和实现，不需要修改训练/评估入口、
-Python bridge 或 Rust。新增 matching 算法同理，只需在 `matching.py` 注册实现。
+只需在 `python_algorithms/dispatch.py` 注册和实现，不需要修改训练/评估入口或
+Rust。新增 matching 算法同理，只需在 `matching.py` 注册实现。
 
 ## 快速验证算法接口
 

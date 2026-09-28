@@ -30,8 +30,18 @@ class RustRideSharingEnv(gym.Env):
         if str(algorithm_dir) not in sys.path:
             sys.path.insert(0, str(algorithm_dir))
         import dispatch
+        import matching
         self.dispatch = dispatch
+        self.matching = matching
         self.dispatch_algorithm = dispatch_algorithm
+        self.matching_algorithm = config["python"]["matching"]["name"]
+        self.matching_options = config["python"]["matching"].get("options", {})
+        self.project_dir = self.config_path.parent
+        self.micro_steps = max(
+            1,
+            int(config["simulation"]["dispatch_cycle_s"])
+            // int(config["simulation"]["batch_interval_s"]),
+        )
         self.action_mode = dispatch.action_mode(dispatch_algorithm)
         self.core = RustSimulation(str(self.config_path))
         self.num_grids = int(self.core.num_grids())
@@ -58,13 +68,31 @@ class RustRideSharingEnv(gym.Env):
         decision = self.dispatch.training_action_to_decision(
             self._observation, self.dispatch_algorithm, action
         )
-        if decision["kind"] == "none":
-            result = self.core.step_none()
-        else:
-            result = self.core.step_flow_matrix(decision["counts"])
-        observation, reward, terminated, truncated, info_json = result
+        counts = decision.get("counts") if decision["kind"] == "flow_matrix" else None
+        reward = 0.0
+        info_json = "{}"
+        terminated = truncated = False
+        observation = self._observation
+        for micro_step in range(self.micro_steps):
+            payload = json.loads(self.core.matching_input_json())
+            matches = self.matching.match_vehicles(
+                payload["cars"],
+                payload["passengers"],
+                float(payload["threshold_m"]),
+                self.matching_algorithm,
+                self.matching_options,
+                str(self.project_dir),
+            )
+            # Student algorithms return JSON-like lists; PyO3 receives pairs as tuples.
+            match_pairs = [tuple(pair) for pair in matches]
+            observation, micro_reward, terminated, truncated, info_json = self.core.step(
+                match_pairs, counts if micro_step == 0 else None
+            )
+            reward += float(micro_reward)
+            if terminated or truncated:
+                break
         self._observation = np.asarray(observation, dtype=np.float32)
-        return (self._observation.copy(), float(reward),
+        return (self._observation.copy(), reward,
                 bool(terminated), bool(truncated), json.loads(info_json))
 
     def start_visualization(self) -> str:

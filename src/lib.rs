@@ -4,7 +4,6 @@ pub mod grid;
 pub mod model;
 pub mod osrm;
 mod python_api;
-pub mod python_bridge;
 pub mod simulator;
 pub mod web;
 

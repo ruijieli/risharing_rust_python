@@ -12,7 +12,7 @@ _ALGORITHMS: dict[str, MatchingAlgorithm] = {}
 
 
 def register(name: str):
-    """Register a matching algorithm without changing the Rust/Python bridge."""
+    """Register a matching algorithm without changing the Rust extension."""
     def decorator(function: MatchingAlgorithm) -> MatchingAlgorithm:
         if name in _ALGORITHMS:
             raise ValueError(f"Matching algorithm already registered: {name}")

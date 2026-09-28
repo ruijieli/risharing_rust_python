@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-import json
 import sys
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root / "python_algorithms"))
 
-import api
 import dispatch
 import matching
 
@@ -30,12 +28,17 @@ matching_input = {
 }
 matching_input["threshold_m"] = 1000.0
 matching_input["options"] = {}
-matches = json.loads(api.match_json(json.dumps(matching_input), "maximum"))
+matches = matching.match_vehicles(
+    matching_input["cars"], matching_input["passengers"], matching_input["threshold_m"],
+    "maximum", matching_input["options"], str(root),
+)
 assert matches == [["car_0", "pax_0"]], matches
 custom_matching_input = dict(matching_input, threshold_m=123.0,
                              options={"student_option": 7}, project_dir=str(root))
-custom_matches = json.loads(
-    api.match_json(json.dumps(custom_matching_input), "first_pair")
+custom_matches = matching.match_vehicles(
+    custom_matching_input["cars"], custom_matching_input["passengers"],
+    custom_matching_input["threshold_m"], "first_pair", custom_matching_input["options"],
+    custom_matching_input["project_dir"],
 )
 assert custom_matches == [["car_0", "pax_0"]], custom_matches
 
@@ -44,15 +47,18 @@ dispatch_input = {
     "options": {},
     "project_dir": str(root),
 }
-action = json.loads(api.dispatch_action_json(json.dumps(dispatch_input), "random"))
+action = dispatch.choose_action(
+    dispatch_input["observation"], "random", dispatch_input["options"], dispatch_input["project_dir"]
+)
 assert action["kind"] == "flow_matrix" and len(action["counts"]) == 3, action
 assert [sum(row) for row in action["counts"]] == [1, 0, 0], action
 assert dispatch.action_mode("none") == "none"
 assert dispatch.action_mode("ppo") == "continuous"
 assert dispatch.action_mode("dqn") == "discrete"
 custom_dispatch_input = dict(dispatch_input, options={"student_option": 9})
-custom_action = json.loads(
-    api.dispatch_action_json(json.dumps(custom_dispatch_input), "stay")
+custom_action = dispatch.choose_action(
+    custom_dispatch_input["observation"], "stay", custom_dispatch_input["options"],
+    custom_dispatch_input["project_dir"],
 )
 assert custom_action["counts"] == [[1, 0, 0], [0, 0, 0], [0, 0, 0]], custom_action
 none_action = dispatch.evaluation_action(
@@ -62,4 +68,4 @@ none_action = dispatch.evaluation_action(
     dispatch_input["project_dir"],
 )
 assert none_action == 0, none_action
-print("Python algorithm boundary: OK")
+print("Python algorithm interface: OK")

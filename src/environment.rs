@@ -76,10 +76,14 @@ impl RustEnvironment {
         self.simulator.grid_cell_ids()
     }
 
-    pub fn step(&mut self, action: DispatchAction) -> Result<EnvironmentStep> {
+    pub fn step(
+        &mut self,
+        matches: Vec<(String, String)>,
+        action: Option<DispatchAction>,
+    ) -> Result<EnvironmentStep> {
         let reward = self
             .runtime
-            .block_on(self.simulator.training_cycle(action))?;
+            .block_on(self.simulator.advance_step(matches, action))?;
         self.publish_snapshot();
         Ok(EnvironmentStep {
             observation: self.observation(),
@@ -94,12 +98,8 @@ impl RustEnvironment {
         })
     }
 
-    pub fn step_flow_matrix(&mut self, counts: Vec<Vec<usize>>) -> Result<EnvironmentStep> {
-        self.step(DispatchAction::FlowMatrix { counts })
-    }
-
-    pub fn step_none(&mut self) -> Result<EnvironmentStep> {
-        self.step(DispatchAction::None)
+    pub fn matching_input_json(&mut self) -> Result<String> {
+        Ok(serde_json::to_string(&self.simulator.matching_input())?)
     }
 
     pub fn start_visualization(&mut self) -> Result<String> {

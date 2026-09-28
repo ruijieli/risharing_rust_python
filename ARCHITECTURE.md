@@ -4,7 +4,7 @@
 
 ```text
 Python：训练、评估、匹配策略、空车调度策略
-                  │ observation / action
+                  │ 匹配关系 / 调度动作
                   ▼
 Rust：H3、离散事件、车辆状态、OSRM、奖励、可视化快照
 ```
@@ -14,8 +14,8 @@ Rust：H3、离散事件、车辆状态、OSRM、奖励、可视化快照
 - `python_algorithms/matching.py`
 - `python_algorithms/dispatch.py`
 
-`python_algorithms/api.py` 是稳定的 Rust/Python JSON 边界，不放业务算法。
-`training/rust_env.py` 是很薄的 Gymnasium 适配器，不实现第二套仿真逻辑。
+`training/rust_env.py` 在每个小步调用学生编写的匹配算法，再把匹配关系和调度动作提交给 Rust。
+Rust 不会嵌入或回调 Python。
 
 Rust 内部进一步分层：
 
@@ -53,7 +53,7 @@ Rust会按原整数流量比例压缩该行到剩余车辆数，并再次用最�
 
 ## 通用算法配置
 
-Rust 只解析算法选择与不透明的 `options`，不知道 `maximum/PPO/DQN/TRPO`
+Python 读取算法选择与不透明的 `options`；Rust 不知道 `maximum/PPO/DQN/TRPO`
 等具体名称，也不知道模型路径或超参数：
 
 ```toml
@@ -109,10 +109,9 @@ Python 不处理 H3、不读取车辆内部对象，也不请求 OSRM。
 | `ppo` | continuous | PPO比例矩阵经转换后得到整数流量 |
 | `dqn` | discrete | DQN目标网格经转换后得到整数流量 |
 
-Rust核心动作只有 `None` 和 `FlowMatrix<usize>`。Python调用Rust时也只有
-`step_none()` 和 `step_flow_matrix(counts)`。增加新算法时，在
-`dispatch.py` 中注册推理函数；需要训练时同时提供 `trainer`。最终都由公共适配层
-转换成整数流量。训练、评估循环、JSON API、Python bridge 及 Rust 内核不需要修改。
+Python 每个小步先调用 `matching.match_vehicles()`，再通过 `RustSimulation.step(matches, counts)`
+提交匹配关系和可选的整数流量矩阵。增加新算法时，在 `dispatch.py` 或 `matching.py`
+中注册函数；需要训练时同时提供 `trainer`。训练、评估入口和 Rust 内核不需要修改。
 
 ## 事件顺序
 

@@ -6,7 +6,7 @@ min_lon = 103.98
 
 [simulation]
 passenger_file = "data/filtered_passengers_selected.csv"
-num_cars = 1000
+num_cars = 500
 distance_threshold_m = 1000.0
 position_update_interval_s = 10
 start_time_s = 3600
@@ -15,7 +15,7 @@ batch_interval_s = 10
 dispatch_cycle_s = 120
 #sample_size = 1000000  #不抽样时注释本行；需要抽样时取消注释并填写数量
 random_seed = 42
-visualization = true
+visualization = false
 visualization_step_delay_ms = 10000
 keep_visualization_alive = false
 

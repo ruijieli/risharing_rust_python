@@ -15,5 +15,5 @@ if [[ -n "${python_lib_dir}" ]]; then
     export DYLD_FALLBACK_LIBRARY_PATH="${python_lib_dir}${DYLD_FALLBACK_LIBRARY_PATH:+:${DYLD_FALLBACK_LIBRARY_PATH}}"
 fi
 cd "${project_dir}"
-config_path="${1:-config.toml}"
-cargo run --release -- "${config_path}"
+echo "请使用 ./scripts/train.sh 或 ./scripts/evaluate.sh 运行项目。" >&2
+exit 2
