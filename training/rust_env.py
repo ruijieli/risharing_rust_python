@@ -71,5 +71,15 @@ class RustRideSharingEnv(gym.Env):
         """Start the Rust-owned web server and return its URL."""
         return self.core.start_visualization()
 
+    @property
+    def total_passengers(self) -> int:
+        """Number of passengers loaded for the current evaluation episode."""
+        return int(self.core.total_passengers())
+
+    @property
+    def served_passengers(self) -> int:
+        """Cumulative number of passengers served in the current episode."""
+        return int(self.core.served_passengers())
+
     def render(self):
         print(f"idle vehicles by grid: {self.core.observation()}")

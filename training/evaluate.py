@@ -27,7 +27,7 @@ def main() -> None:
     parser.add_argument("--config", default="config.toml")
     parser.add_argument(
         "--algorithm",
-        help="调度算法名称；默认读取 config.toml 的 [python].dispatch",
+        help="调度算法名称；默认读取 config.toml 的 [python.dispatch].name",
     )
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--no-keep-open", action="store_true")
@@ -36,19 +36,15 @@ def main() -> None:
     config_path = (PROJECT_ROOT / args.config).resolve()
     config = load_config(config_path)
     python_config = config["python"]
-    algorithm = args.algorithm or python_config["dispatch"]
-    algorithm_dir = (PROJECT_ROOT / python_config["algorithm_dir"]).resolve()
+    dispatch_config = python_config["dispatch"]
+    algorithm = args.algorithm or dispatch_config["name"]
+    options = dispatch_config.get("options", {})
+    algorithm_dir = (config_path.parent / python_config["algorithm_dir"]).resolve()
     if str(algorithm_dir) not in sys.path:
         sys.path.insert(0, str(algorithm_dir))
     import dispatch
 
     action_mode = dispatch.action_mode(algorithm) # 返回动作是连续的还是离散的
-    model_paths = {
-        key.removesuffix("_model"): str((PROJECT_ROOT / value).resolve())
-        for key, value in python_config.items()
-        if key.endswith("_model")
-    }
-
     env = RustRideSharingEnv(config_path, dispatch_algorithm=algorithm)
     observation, _ = env.reset()
     print(f"调度算法：{algorithm}；动作模式：{action_mode}")
@@ -66,13 +62,13 @@ def main() -> None:
         if visualization_enabled
         else 0.0
     )
-    total_reward = 0.0
     steps = 0
     started = time.perf_counter()
     while True:
-        action = dispatch.evaluation_action(observation, algorithm, model_paths)
-        observation, reward, terminated, truncated, info = env.step(action)
-        total_reward += reward
+        action = dispatch.evaluation_action(
+            observation, algorithm, options, config_path.parent
+        )
+        observation, _reward, terminated, truncated, info = env.step(action)
         steps += 1
         if delay > 0:
             time.sleep(delay)
@@ -80,9 +76,19 @@ def main() -> None:
             break
 
     elapsed = time.perf_counter() - started
+    total_passengers = env.total_passengers
+    served_passengers = env.served_passengers
+    service_rate = (
+        served_passengers / total_passengers * 100.0
+        if total_passengers
+        else 0.0
+    )
     print(
-        f"评估完成：steps={steps}, served={int(total_reward)}, "
-        f"wall_time={elapsed:.3f}s, steps_per_second={steps / max(elapsed, 1e-9):.2f}"
+        f"评估完成：总乘客数={total_passengers}，"
+        f"已服务人数/总乘客数={served_passengers}/{total_passengers}，"
+        f"服务率={service_rate:.2f}%，steps={steps}，"
+        f"wall_time={elapsed:.3f}s，"
+        f"steps_per_second={steps / max(elapsed, 1e-9):.2f}"
     )
     if (
         visualization_enabled

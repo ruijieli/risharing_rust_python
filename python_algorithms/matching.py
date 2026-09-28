@@ -1,7 +1,28 @@
-"""User-editable vehicle/passenger matching algorithms."""
+"""User-editable vehicle/passenger matching algorithm registry."""
+
+from __future__ import annotations
+
+from typing import Callable
 
 import networkx as nx
 import numpy as np
+
+MatchingAlgorithm = Callable[..., list]
+_ALGORITHMS: dict[str, MatchingAlgorithm] = {}
+
+
+def register(name: str):
+    """Register a matching algorithm without changing the Rust/Python bridge."""
+    def decorator(function: MatchingAlgorithm) -> MatchingAlgorithm:
+        if name in _ALGORITHMS:
+            raise ValueError(f"Matching algorithm already registered: {name}")
+        _ALGORITHMS[name] = function
+        return function
+    return decorator
+
+
+def available_algorithms() -> tuple[str, ...]:
+    return tuple(sorted(_ALGORITHMS))
 
 
 def _haversine(car_points: np.ndarray, pax_points: np.ndarray) -> np.ndarray:
@@ -16,19 +37,16 @@ def _haversine(car_points: np.ndarray, pax_points: np.ndarray) -> np.ndarray:
     return radius * 2 * np.arctan2(np.sqrt(value), np.sqrt(1 - value))
 
 
-def match_vehicles(cars: list[dict], passengers: list[dict],
-                   threshold_m: float, algorithm: str = "maximum") -> list[list[str]]:
-    """Return ``[[car_id, passenger_id], ...]`` without changing simulator state."""
-    if not cars or not passengers:
-        return []
-    if algorithm != "maximum":
-        raise ValueError(f"Unknown matching algorithm: {algorithm}")
-
+@register("maximum")
+def maximum_matching(cars: list[dict], passengers: list[dict], *,
+                     threshold_m: float, options: dict,
+                     project_dir: str) -> list[list[str]]:
+    """Maximum-cardinality bipartite matching within ``threshold_m``."""
+    del options, project_dir
     car_points = np.asarray([[item["lat"], item["lon"]] for item in cars], dtype=np.float64)
     pax_points = np.asarray([[item["lat"], item["lon"]] for item in passengers], dtype=np.float64)
     distances = _haversine(car_points, pax_points)
     valid = np.where((distances < threshold_m) & (distances > 0))
-
     graph = nx.Graph()
     car_ids = [item["id"] for item in cars]
     pax_ids = [item["id"] for item in passengers]
@@ -39,3 +57,22 @@ def match_vehicles(cars: list[dict], passengers: list[dict],
     car_id_set = set(car_ids)
     result = nx.algorithms.bipartite.maximum_matching(graph, top_nodes=car_id_set)
     return [[car_id, pax_id] for car_id, pax_id in result.items() if car_id in car_id_set]
+
+
+def match_vehicles(cars: list[dict], passengers: list[dict], threshold_m: float,
+                   algorithm: str = "maximum", options: dict | None = None,
+                   project_dir: str = ".") -> list[list[str]]:
+    """Run a registered algorithm and return ``[[car_id, passenger_id], ...]``."""
+    if not cars or not passengers:
+        return []
+    try:
+        function = _ALGORITHMS[algorithm]
+    except KeyError as error:
+        available = ", ".join(available_algorithms())
+        raise ValueError(
+            f"Unknown matching algorithm: {algorithm}; available: {available}"
+        ) from error
+    return function(
+        cars, passengers, threshold_m=threshold_m, options=options or {},
+        project_dir=project_dir,
+    )

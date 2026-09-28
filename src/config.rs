@@ -4,7 +4,8 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Config {
@@ -52,11 +53,17 @@ pub struct OsrmConfig {
 #[derive(Clone, Debug, Deserialize)]
 pub struct PythonConfig {
     pub algorithm_dir: String,
-    pub matching: String,
-    pub dispatch: String,
+    pub matching: AlgorithmConfig,
+    pub dispatch: AlgorithmConfig,
     pub h3_resolution: u8,
-    pub ppo_model: String,
-    pub dqn_model: String,
+}
+
+/// Algorithm-neutral configuration passed unchanged to Python.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct AlgorithmConfig {
+    pub name: String,
+    #[serde(default)]
+    pub options: Map<String, Value>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -80,6 +87,22 @@ impl Config {
             path.to_path_buf()
         } else {
             self.project_dir.join(path)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loads_algorithm_neutral_options() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        for name in ["config.toml", "config.smoke.toml"] {
+            let config = Config::load(&root.join(name)).unwrap();
+            assert_eq!(config.python.matching.name, "maximum");
+            assert!(config.python.matching.options.is_empty());
+            assert!(!config.python.dispatch.name.is_empty());
         }
     }
 }

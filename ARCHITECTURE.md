@@ -13,8 +13,6 @@ Rust：H3、离散事件、车辆状态、OSRM、奖励、可视化快照
 
 - `python_algorithms/matching.py`
 - `python_algorithms/dispatch.py`
-- `training/train.py`（更换或配置训练算法时）
-- `training/evaluate.py`（评估入口）
 
 `python_algorithms/api.py` 是稳定的 Rust/Python JSON 边界，不放业务算法。
 `training/rust_env.py` 是很薄的 Gymnasium 适配器，不实现第二套仿真逻辑。
@@ -53,12 +51,31 @@ Rust不理解PPO比例或DQN离散动作，只验证并执行最终整数矩阵�
 一个周期内仍保持“先匹配、后空车调度”。如果匹配消耗了策略观测中的部分空闲车，
 Rust会按原整数流量比例压缩该行到剩余车辆数，并再次用最大余数法保持守恒。
 
+## 通用算法配置
+
+Rust 只解析算法选择与不透明的 `options`，不知道 `maximum/PPO/DQN/TRPO`
+等具体名称，也不知道模型路径或超参数：
+
+```toml
+[python.matching]
+name = "maximum"
+[python.matching.options]
+
+[python.dispatch]
+name = "ppo"
+[python.dispatch.options]
+model_path = "models/ppo_ridesharing_model.zip"
+```
+
+`options` 由对应 Python 算法自行解释。相对路径以配置文件所在目录为基准。
+
 ## 匹配算法接口
 
 在 `matching.py` 中修改：
 
 ```python
-def match_vehicles(cars, passengers, threshold_m, algorithm):
+@register("my_matching")
+def my_matching(cars, passengers, *, threshold_m, options, project_dir):
     return [[car_id, passenger_id], ...]
 ```
 
@@ -69,8 +86,9 @@ def match_vehicles(cars, passengers, threshold_m, algorithm):
 在 `dispatch.py` 中修改：
 
 ```python
-def choose_action(observation, algorithm, model_paths):
-    return {"kind": "flow_matrix", "counts": counts}
+@register("my_dispatch", action_mode="continuous", trainer=my_trainer)
+def my_dispatch(observation, options, project_dir):
+    return {"kind": "proportions", "values": values}
 ```
 
 也可以返回：
@@ -93,8 +111,8 @@ Python 不处理 H3、不读取车辆内部对象，也不请求 OSRM。
 
 Rust核心动作只有 `None` 和 `FlowMatrix<usize>`。Python调用Rust时也只有
 `step_none()` 和 `step_flow_matrix(counts)`。增加新算法时，在
-`dispatch.py` 的 `ACTION_MODES` 注册名称和原始动作模式，并在 `_raw_action()`
-增加实现即可；最终都由适配层转换成整数流量。训练、评估循环及Rust内核不需要修改。
+`dispatch.py` 中注册推理函数；需要训练时同时提供 `trainer`。最终都由公共适配层
+转换成整数流量。训练、评估循环、JSON API、Python bridge 及 Rust 内核不需要修改。
 
 ## 事件顺序
 

@@ -34,6 +34,14 @@ impl RustSimulation {
         self.environment.num_grids()
     }
 
+    fn total_passengers(&self) -> usize {
+        self.environment.total_passengers()
+    }
+
+    fn served_passengers(&self) -> u64 {
+        self.environment.served_passengers()
+    }
+
     fn grid_cell_ids(&self) -> Vec<String> {
         self.environment.grid_cell_ids()
     }
@@ -67,6 +75,6 @@ fn environment_step_to_python(step: EnvironmentStep) -> PythonStep {
     )
 }
 
-fn py_error(error: impl std::fmt::Display) -> PyErr {
-    PyRuntimeError::new_err(error.to_string())
+fn py_error(error: anyhow::Error) -> PyErr {
+    PyRuntimeError::new_err(format!("{error:#}"))
 }

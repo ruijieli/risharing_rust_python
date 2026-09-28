@@ -64,6 +64,14 @@ impl RustEnvironment {
         self.simulator.num_grids()
     }
 
+    pub fn total_passengers(&self) -> usize {
+        self.simulator.passengers.len()
+    }
+
+    pub fn served_passengers(&self) -> u64 {
+        self.simulator.total_served
+    }
+
     pub fn grid_cell_ids(&self) -> Vec<String> {
         self.simulator.grid_cell_ids()
     }

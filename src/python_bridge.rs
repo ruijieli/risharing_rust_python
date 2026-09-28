@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use pyo3::prelude::*;
 use serde::Serialize;
+use serde_json::{Map, Value};
 
 use crate::{
     config::Config,
@@ -22,23 +23,20 @@ struct MatchingPayload<'a> {
 }
 
 #[derive(Serialize)]
-struct ModelPaths {
-    ppo: String,
-    dqn: String,
-}
-
-#[derive(Serialize)]
 struct DispatchPayload<'a> {
     observation: &'a [f32],
-    model_paths: ModelPaths,
+    options: &'a Map<String, Value>,
+    project_dir: &'a str,
 }
 
 #[derive(Clone)]
 pub struct PythonAlgorithms {
     algorithm_dir: String,
+    project_dir: String,
     matching_name: String,
+    matching_options: Map<String, Value>,
     dispatch_name: String,
-    config: Config,
+    dispatch_options: Map<String, Value>,
 }
 
 impl PythonAlgorithms {
@@ -48,9 +46,11 @@ impl PythonAlgorithms {
                 .resolve(&config.python.algorithm_dir)
                 .to_string_lossy()
                 .into_owned(),
-            matching_name: config.python.matching.clone(),
-            dispatch_name: config.python.dispatch.clone(),
-            config: config.clone(),
+            project_dir: config.project_dir.to_string_lossy().into_owned(),
+            matching_name: config.python.matching.name.clone(),
+            matching_options: config.python.matching.options.clone(),
+            dispatch_name: config.python.dispatch.name.clone(),
+            dispatch_options: config.python.dispatch.options.clone(),
         }
     }
 
@@ -87,13 +87,19 @@ impl PythonAlgorithms {
                 })
                 .collect(),
         };
-        let input = serde_json::to_string(&payload)?;
+        let input = serde_json::to_string(&serde_json::json!({
+            "cars": payload.cars,
+            "passengers": payload.passengers,
+            "threshold_m": threshold_m,
+            "options": &self.matching_options,
+            "project_dir": &self.project_dir,
+        }))?;
         Python::with_gil(|py| -> Result<_> {
             self.prepare_path(py)?;
             let module = py.import("api")?;
             let output: String = module
                 .getattr("match_json")?
-                .call1((input, &self.matching_name, threshold_m))?
+                .call1((input, &self.matching_name))?
                 .extract()?;
             serde_json::from_str(&output).context("decode Python matching result")
         })
@@ -102,18 +108,8 @@ impl PythonAlgorithms {
     pub fn dispatch(&self, observation: &[f32]) -> Result<DispatchAction> {
         let payload = DispatchPayload {
             observation,
-            model_paths: ModelPaths {
-                ppo: self
-                    .config
-                    .resolve(&self.config.python.ppo_model)
-                    .to_string_lossy()
-                    .into_owned(),
-                dqn: self
-                    .config
-                    .resolve(&self.config.python.dqn_model)
-                    .to_string_lossy()
-                    .into_owned(),
-            },
+            options: &self.dispatch_options,
+            project_dir: &self.project_dir,
         };
         let input = serde_json::to_string(&payload)?;
         Python::with_gil(|py| -> Result<_> {

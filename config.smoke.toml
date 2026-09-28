@@ -26,25 +26,29 @@ max_concurrency = 16
 
 [python]
 algorithm_dir = "python_algorithms"
-matching = "maximum"
-dispatch = "none"
 h3_resolution = 7
-ppo_model = "models/ppo_ridesharing_model.zip"
-dqn_model = "models/dqn_ridesharing_model.zip"
+
+[python.matching]
+name = "maximum"
+
+[python.matching.options]
+
+[python.dispatch]
+name = "none"
+
+[python.dispatch.options]
 
 [training]
 algorithm = "ppo"
+
+[training.options]
 total_timesteps = 20
-ppo_n_steps = 12
-ppo_batch_size = 6
-ppo_learning_rate = 1e-5
-ppo_clip_range = 0.02
-ppo_ent_coef = 0.0005
-dqn_learning_rate = 1e-4
-dqn_total_timesteps = 20
-dqn_buffer_size = 100
-dqn_learning_starts = 10
-dqn_batch_size = 8
+output_path = "models/ppo_ridesharing_model"
+n_steps = 12
+batch_size = 6
+learning_rate = 1e-5
+clip_range = 0.02
+ent_coef = 0.0005
 
 [visualization]
 host = "127.0.0.1"

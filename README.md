@@ -20,9 +20,9 @@ Rust 源码中，`lib.rs` 只注册模块；Python 接口位于 `python_api.rs`�
 Python 只负责：
 
 - `python_algorithms/matching.py`：派单匹配；
-- `python_algorithms/dispatch.py`：空车调度，包括 PPO/DQN 推理。
+- `python_algorithms/dispatch.py`：注册空车调度的推理与训练实现；
 - `training/rust_env.py`：很薄的 Gymnasium/Stable-Baselines3 适配器；
-- `training/train.py`：Stable-Baselines3 的 PPO/DQN 训练入口。
+- `training/train.py`：调用已注册 trainer 的通用训练入口；
 - `training/evaluate.py`：模型评估、测速和实时可视化入口。
 
 Python 调度算法接收Rust生成的网格观测，负责把PPO比例、DQN离散动作或其他
@@ -79,24 +79,24 @@ cargo run --release -- config.toml
 curl "http://127.0.0.1:5001/nearest/v1/driving/104.0648,30.6543"
 ```
 
-训练 PPO：
+训练配置中的算法：
 
 ```bash
 conda activate RL
-./scripts/train.sh ppo config.toml
+./scripts/train.sh "" config.toml
 ```
 
-训练 DQN：
+也可临时指定算法（其 `[training.options]` 必须与该算法匹配）：
 
 ```bash
 ./scripts/train.sh dqn config.toml
 ```
 
-训练脚本会自动构建 Python 可调用的 Rust 扩展，模型分别保存到：
+训练脚本会自动构建 Python 可调用的 Rust 扩展，输出位置由
+`[training.options].output_path` 指定，例如：
 
 ```text
 models/ppo_ridesharing_model.zip
-models/dqn_ridesharing_model.zip
 ```
 
 所有训练参数都集中在 `config.toml` 的 `[training]`。
@@ -113,17 +113,19 @@ conda activate RL
 中选择“评估 PPO 并可视化（Rust 环境）”。算法开发者不需要运行 `main.rs`
 或手动使用 Cargo。
 
-评估入口默认读取 `config.toml` 的 `[python].dispatch`，支持：
+评估入口默认读取 `config.toml` 的 `[python.dispatch].name`。例如：
 
 ```toml
-dispatch = "none"    # 无调度基准
-dispatch = "random"  # 随机调度基准
-dispatch = "ppo"     # PPO 调度
-dispatch = "dqn"     # DQN 调度
+[python.dispatch]
+name = "ppo"
+
+[python.dispatch.options]
+model_path = "models/ppo_ridesharing_model.zip"
 ```
 
 也可以临时覆盖配置，例如 `./scripts/evaluate.sh none config.toml`。新增调度算法
-只需在 `python_algorithms/dispatch.py` 注册和实现，不需要修改 Rust。
+只需在 `python_algorithms/dispatch.py` 注册和实现，不需要修改训练/评估入口、
+Python bridge 或 Rust。新增 matching 算法同理，只需在 `matching.py` 注册实现。
 
 ## 快速验证算法接口
 
@@ -146,7 +148,8 @@ python -m training.train --config config.smoke.toml --algorithm ppo --check-only
 ```toml
 num_cars = 500
 sample_size = 3000
-dispatch = "ppo"
+[python.dispatch]
+name = "ppo"
 ```
 
 ## 当前兼容语义
