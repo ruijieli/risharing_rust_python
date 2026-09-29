@@ -35,7 +35,7 @@ def main() -> None:
     config = load_config(config_path)
     training = config["training"]
     algorithm = args.algorithm or training["algorithm"]
-    options = training.get("options", {})
+    options = training.get(algorithm, {})
     algorithm_dir = (config_path.parent / config["python"]["algorithm_dir"]).resolve()
     if str(algorithm_dir) not in sys.path:
         sys.path.insert(0, str(algorithm_dir))

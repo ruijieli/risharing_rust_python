@@ -32,8 +32,9 @@ class RustRideSharingEnv(gym.Env):
         import matching
         self.dispatch = dispatch
         self.matching = matching
-        self.matching_algorithm = config["python"]["matching"]["name"]
-        self.matching_options = config["python"]["matching"].get("options", {})
+        matching_config = config["python"]["matching"]
+        self.matching_algorithm = matching_config["name"]
+        self.matching_options = matching_config.get(self.matching_algorithm, {})
         self.project_dir = self.config_path.parent
         self.micro_steps = max(
             1,

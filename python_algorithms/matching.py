@@ -59,6 +59,64 @@ def maximum_matching(cars: list[dict], passengers: list[dict], *,
     return [[car_id, pax_id] for car_id, pax_id in result.items() if car_id in car_id_set]
 
 
+@register("nearest")
+def nearest_matching(cars: list[dict], passengers: list[dict], *,
+                     threshold_m: float, options: dict,
+                     project_dir: str) -> list[list[str]]:
+    """Greedily match nearby pairs within ``threshold_m``.
+
+    ``strategy="passenger"`` processes passengers in input order and assigns
+    each one its nearest unused car. ``strategy="global"`` processes all
+    eligible car/passenger pairs from shortest to longest distance.
+    """
+    del project_dir
+    strategy = str(options.get("strategy", "passenger"))
+    if strategy not in {"passenger", "global"}:
+        raise ValueError("nearest matching option 'strategy' must be passenger or global")
+    max_matches = int(options.get("max_matches", 0))
+    if max_matches < 0:
+        raise ValueError("nearest matching option 'max_matches' must be >= 0")
+
+    car_points = np.asarray([[item["lat"], item["lon"]] for item in cars], dtype=np.float64)
+    pax_points = np.asarray(
+        [[item["lat"], item["lon"]] for item in passengers], dtype=np.float64
+    )
+    distances = _haversine(car_points, pax_points)
+    eligible = np.isfinite(distances) & (distances <= threshold_m)
+    pairs: list[tuple[int, int]] = []
+
+    if strategy == "passenger":
+        unused_cars = np.ones(len(cars), dtype=bool)
+        for pax_index in range(len(passengers)):
+            candidates = np.flatnonzero(eligible[:, pax_index] & unused_cars)
+            if candidates.size == 0:
+                continue
+            candidate_distances = distances[candidates, pax_index]
+            car_index = int(candidates[np.argmin(candidate_distances)])
+            pairs.append((car_index, pax_index))
+            unused_cars[car_index] = False
+            if max_matches and len(pairs) >= max_matches:
+                break
+    else:
+        car_indices, pax_indices = np.where(eligible)
+        candidates = sorted(
+            zip(car_indices.tolist(), pax_indices.tolist()),
+            key=lambda pair: (distances[pair], pair[0], pair[1]),
+        )
+        used_cars: set[int] = set()
+        used_passengers: set[int] = set()
+        for car_index, pax_index in candidates:
+            if car_index in used_cars or pax_index in used_passengers:
+                continue
+            pairs.append((car_index, pax_index))
+            used_cars.add(car_index)
+            used_passengers.add(pax_index)
+            if max_matches and len(pairs) >= max_matches:
+                break
+
+    return [[cars[car]["id"], passengers[pax]["id"]] for car, pax in pairs]
+
+
 def match_vehicles(cars: list[dict], passengers: list[dict], threshold_m: float,
                    algorithm: str = "maximum", options: dict | None = None,
                    project_dir: str = ".") -> list[list[str]]:

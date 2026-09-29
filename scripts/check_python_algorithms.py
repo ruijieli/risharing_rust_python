@@ -33,6 +33,20 @@ matches = matching.match_vehicles(
     "maximum", matching_input["options"], str(root),
 )
 assert matches == [["car_0", "pax_0"]], matches
+nearest_cars = [
+    {"id": "car_0", "lat": 30.6600, "lon": 104.0600},
+    {"id": "car_1", "lat": 30.6700, "lon": 104.0700},
+]
+nearest_passengers = [
+    {"id": "pax_0", "lat": 30.6600, "lon": 104.0600},
+    {"id": "pax_1", "lat": 30.6701, "lon": 104.0701},
+]
+nearest_matches = matching.match_vehicles(
+    nearest_cars, nearest_passengers, 1000.0, "nearest",
+    {"strategy": "global", "max_matches": 1}, str(root),
+)
+assert nearest_matches == [["car_0", "pax_0"]], nearest_matches
+assert matching.available_algorithms() == ("first_pair", "maximum", "nearest")
 custom_matching_input = dict(matching_input, threshold_m=123.0,
                              options={"student_option": 7}, project_dir=str(root))
 custom_matches = matching.match_vehicles(

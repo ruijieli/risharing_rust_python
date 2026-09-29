@@ -4,8 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Config {
@@ -58,12 +57,10 @@ pub struct PythonConfig {
     pub h3_resolution: u8,
 }
 
-/// Algorithm-neutral configuration passed unchanged to Python.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+/// Rust only needs the selected name; Python reads algorithm-specific tables.
+#[derive(Clone, Debug, Deserialize)]
 pub struct AlgorithmConfig {
     pub name: String,
-    #[serde(default)]
-    pub options: Map<String, Value>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -96,12 +93,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn loads_algorithm_neutral_options() {
+    fn loads_algorithm_selection() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         for name in ["config.toml", "config.smoke.toml"] {
             let config = Config::load(&root.join(name)).unwrap();
             assert_eq!(config.python.matching.name, "maximum");
-            assert!(config.python.matching.options.is_empty());
             assert!(!config.python.dispatch.name.is_empty());
         }
     }

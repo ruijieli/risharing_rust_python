@@ -38,7 +38,7 @@ def main() -> None:
     python_config = config["python"]
     dispatch_config = python_config["dispatch"]
     algorithm = args.algorithm or dispatch_config["name"]
-    options = dispatch_config.get("options", {})
+    options = dispatch_config.get(algorithm, {})
     algorithm_dir = (config_path.parent / python_config["algorithm_dir"]).resolve()
     if str(algorithm_dir) not in sys.path:
         sys.path.insert(0, str(algorithm_dir))

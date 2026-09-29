@@ -29,21 +29,38 @@ algorithm_dir = "python_algorithms"
 h3_resolution = 7
 
 [python.matching]
+# 可选算法：maximum、nearest
+# maximum：在距离阈值内尽可能增加匹配数量
+# nearest：贪心选择最近的车辆和乘客
 name = "maximum"
 
-[python.matching.options]
+[python.matching.maximum]
+
+[python.matching.nearest]
+strategy = "passenger"  # passenger：按乘客顺序；global：按全局距离从近到远
+max_matches = 0         # 每批最大匹配数；0 表示不限制
+# 最大匹配距离统一使用 [simulation].distance_threshold_m
 
 [python.dispatch]
 # 可选算法：ppo、sac、none、random（全部使用连续比例矩阵）
 name = "ppo"
 
-[python.dispatch.options]
+[python.dispatch.ppo]
 model_path = "models/ppo_ridesharing_model.zip"
+deterministic = true
+
+[python.dispatch.sac]
+model_path = "models/sac_ridesharing_model.zip"
+deterministic = true
+
+[python.dispatch.none]
+
+[python.dispatch.random]
 
 [training]
 algorithm = "ppo"
 
-[training.options]
+[training.ppo]
 total_timesteps = 200
 output_path = "models/ppo_ridesharing_model"
 n_steps = 180
@@ -51,6 +68,21 @@ batch_size = 60
 learning_rate = 1e-5
 clip_range = 0.02
 ent_coef = 0.0005
+gamma = 0.99
+verbose = 1
+
+[training.sac]
+total_timesteps = 200
+output_path = "models/sac_ridesharing_model"
+learning_rate = 0.0003
+buffer_size = 100000
+learning_starts = 100
+batch_size = 64
+tau = 0.005
+gamma = 0.99
+train_freq = 1
+gradient_steps = 1
+verbose = 1
 
 [visualization]
 host = "127.0.0.1"

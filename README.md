@@ -60,22 +60,21 @@ conda activate RL
 ./scripts/train.sh "" config.toml
 ```
 
-也可临时指定算法（其 `[training.options]` 必须与该算法匹配）：
+也可临时指定算法，程序会自动读取同名配置表，例如 `[training.sac]`：
 
 ```bash
 ./scripts/train.sh sac config.toml
 ```
 
 训练脚本会自动构建 Python 可调用的 Rust 扩展，输出位置由
-`[training.options].output_path` 指定，例如：
+`[training.<algorithm>].output_path` 指定，例如：
 
 ```text
 models/ppo_ridesharing_model.zip
 ```
 
-所有训练参数都集中在 `config.toml` 的 `[training]`。使用 SAC 时，
-`[training.options]` 至少需提供 `total_timesteps`、`output_path`、
-`learning_rate`、`buffer_size`、`learning_starts` 和 `batch_size`。
+PPO 和 SAC 参数分别位于 `[training.ppo]` 和 `[training.sac]`，切换
+`[training].algorithm` 或命令行算法后会自动选择对应配置。
 
 ## 评估、测速与可视化
 
@@ -95,8 +94,9 @@ conda activate RL
 [python.dispatch]
 name = "ppo"
 
-[python.dispatch.options]
+[python.dispatch.ppo]
 model_path = "models/ppo_ridesharing_model.zip"
+deterministic = true
 ```
 
 也可以临时覆盖配置，例如 `./scripts/evaluate.sh none config.toml`。新增调度算法

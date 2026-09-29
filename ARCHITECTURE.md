@@ -51,21 +51,30 @@ observation, reward, terminated, truncated, info = env.step(action)
 
 ## 通用算法配置
 
-Python 读取算法选择与不透明的 `options`；Rust 不知道 `maximum/PPO/SAC`
-等具体名称，也不知道模型路径或超参数：
+Python 按选中的算法名读取同名配置表；Rust 不知道 `maximum/PPO/SAC`
+等具体算法，也不知道模型路径或超参数：
 
 ```toml
 [python.matching]
 name = "maximum"
-[python.matching.options]
+[python.matching.maximum]
+
+[python.matching.nearest]
+strategy = "passenger"
+max_matches = 0
 
 [python.dispatch]
 name = "ppo"
-[python.dispatch.options]
+[python.dispatch.ppo]
 model_path = "models/ppo_ridesharing_model.zip"
+
+[python.dispatch.sac]
+model_path = "models/sac_ridesharing_model.zip"
 ```
 
-`options` 由对应 Python 算法自行解释。相对路径以配置文件所在目录为基准。
+例如 `name = "nearest"` 时读取 `[python.matching.nearest]`，
+`name = "ppo"` 时读取 `[python.dispatch.ppo]`。相对路径以配置文件
+所在目录为基准。
 
 ## 匹配算法接口
 

@@ -70,6 +70,7 @@ def _train_ppo(env, options: dict, project_dir: str | Path):
         n_steps=int(options["n_steps"]), batch_size=int(options["batch_size"]),
         learning_rate=float(options["learning_rate"]),
         clip_range=float(options["clip_range"]), ent_coef=float(options["ent_coef"]),
+        gamma=float(options.get("gamma", 0.99)),
     )
     return model, int(options["total_timesteps"]), _resolve_path(options["output_path"], project_dir)
 

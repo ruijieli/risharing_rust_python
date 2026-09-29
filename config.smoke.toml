@@ -31,17 +31,31 @@ h3_resolution = 7
 [python.matching]
 name = "maximum"
 
-[python.matching.options]
+[python.matching.maximum]
+
+[python.matching.nearest]
+strategy = "passenger"
+max_matches = 0
 
 [python.dispatch]
 name = "none"
 
-[python.dispatch.options]
+[python.dispatch.ppo]
+model_path = "models/ppo_ridesharing_model.zip"
+deterministic = true
+
+[python.dispatch.sac]
+model_path = "models/sac_ridesharing_model.zip"
+deterministic = true
+
+[python.dispatch.none]
+
+[python.dispatch.random]
 
 [training]
 algorithm = "ppo"
 
-[training.options]
+[training.ppo]
 total_timesteps = 20
 output_path = "models/ppo_ridesharing_model"
 n_steps = 12
@@ -49,6 +63,21 @@ batch_size = 6
 learning_rate = 1e-5
 clip_range = 0.02
 ent_coef = 0.0005
+gamma = 0.99
+verbose = 1
+
+[training.sac]
+total_timesteps = 20
+output_path = "models/sac_ridesharing_model"
+learning_rate = 0.0003
+buffer_size = 1000
+learning_starts = 10
+batch_size = 16
+tau = 0.005
+gamma = 0.99
+train_freq = 1
+gradient_steps = 1
+verbose = 1
 
 [visualization]
 host = "127.0.0.1"
