@@ -32,28 +32,26 @@ Rust 内部进一步分层：
 ## Gymnasium 接口
 
 ```python
-env = RustRideSharingEnv("config.toml", action_mode="continuous")
+env = RustRideSharingEnv("config.toml")
 observation, info = env.reset(seed=42)
 observation, reward, terminated, truncated, info = env.step(action)
 ```
 
 - `observation`：长度为 `num_grids` 的 `float32` 数组，表示每个 H3 网格的空闲车辆数。
-- PPO原始动作：`num_grids × num_grids` 非负比例矩阵。
-- DQN原始动作：`0` 表示不调度，`1..num_grids` 表示统一调往对应网格。
-- Python算法最终输出整数车辆流量矩阵，`counts[a][b]` 表示从A区调往B区的车辆数。
+- 所有调度算法的动作：`num_grids × num_grids` 非负连续比例矩阵。
+- Python算法输出连续比例矩阵，`action[a][b]` 表示从A区调往B区的相对权重。
 - `reward`：该调度周期新增的成功服务订单数。
 - `terminated`：仿真时间达到 `end_time_s`。
 - `info`：包含 `served_passengers` 和 `current_time`。
 
-比例到整数流量的转换位于Python `dispatch.py`，使用最大余数法，保证每一行
-之和等于该区域空闲车辆数。对角线表示车辆留在原区域，不请求OSRM。
-Rust不理解PPO比例或DQN离散动作，只验证并执行最终整数矩阵。
-一个周期内仍保持“先匹配、后空车调度”。如果匹配消耗了策略观测中的部分空闲车，
-Rust会按原整数流量比例压缩该行到剩余车辆数，并再次用最大余数法保持守恒。
+周期边界先完成当前批次匹配，再把匹配后的实际空闲车辆数返回给策略。
+策略输出比例矩阵后，Rust 使用最大余数法一次性转换为整数车辆流量，
+保证每行之和等于对应区域的实际空闲车辆数。对角线表示车辆留在
+原区域，不请求 OSRM。不再存在 Python 提前整数化或 Rust 二次缩放。
 
 ## 通用算法配置
 
-Python 读取算法选择与不透明的 `options`；Rust 不知道 `maximum/PPO/DQN/TRPO`
+Python 读取算法选择与不透明的 `options`；Rust 不知道 `maximum/PPO/SAC`
 等具体名称，也不知道模型路径或超参数：
 
 ```toml
@@ -86,40 +84,35 @@ def my_matching(cars, passengers, *, threshold_m, options, project_dir):
 在 `dispatch.py` 中修改：
 
 ```python
-@register("my_dispatch", action_mode="continuous", trainer=my_trainer)
+@register("my_dispatch", trainer=my_trainer)
 def my_dispatch(observation, options, project_dir):
     return {"kind": "proportions", "values": values}
-```
-
-也可以返回：
-
-```python
-{"kind": "none"}
-{"kind": "flow_matrix", "counts": [[...], ...]}
 ```
 
 Python 不处理 H3、不读取车辆内部对象，也不请求 OSRM。
 
 内置调度算法：
 
-| 名称 | 动作模式 | 含义 |
-|---|---|---|
-| `none` | none | 不进行空车调度，用作基准组 |
-| `random` | continuous | 随机比例经转换后得到整数流量 |
-| `ppo` | continuous | PPO比例矩阵经转换后得到整数流量 |
-| `dqn` | discrete | DQN目标网格经转换后得到整数流量 |
+| 名称 | 含义 |
+|---|---|
+| `none` | 输出单位矩阵，所有车辆留在原区域 |
+| `random` | 随机比例矩阵 |
+| `ppo` | PPO 输出比例矩阵 |
+| `sac` | SAC 输出比例矩阵 |
 
-Python 每个小步先调用 `matching.match_vehicles()`，再通过 `RustSimulation.step(matches, counts)`
-提交匹配关系和可选的整数流量矩阵。增加新算法时，在 `dispatch.py` 或 `matching.py`
+Python 在周期边界通过 `apply_matches()` 先提交匹配关系，然后把匹配后的
+观测交给策略。连续比例矩阵通过 `advance(proportions)` 立即执行。
+增加新算法时，在 `dispatch.py` 或 `matching.py`
 中注册函数；需要训练时同时提供 `trainer`。训练、评估入口和 Rust 内核不需要修改。
 
 ## 事件顺序
 
 ```text
-读取本批新订单
-  → Python 匹配
-  → Rust 批量规划接驾与送客路径
-  → 在调度周期边界将整数流量转换为空车路径
+读取调度周期边界的新订单
+  → Python 匹配，Rust 更新成功匹配车辆状态
+  → 返回匹配后的空闲车观测
+  → Python 策略输出连续比例矩阵
+  → Rust 按实际空闲车数转换为整数流量并规划空车路径
   → 更新车辆状态和位置
   → 推进仿真时间
   → 返回 observation/reward/done/info

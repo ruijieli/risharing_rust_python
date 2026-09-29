@@ -41,7 +41,7 @@ def main() -> None:
         sys.path.insert(0, str(algorithm_dir))
     import dispatch
 
-    env = RustRideSharingEnv(config_path, dispatch_algorithm=algorithm)
+    env = RustRideSharingEnv(config_path)
     check_env(env, warn=True)
     if args.check_only:
         print(f"Rust RL environment OK: algorithm={algorithm}, grids={env.num_grids}")

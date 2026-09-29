@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use crate::{
     config::Config,
-    grid::{DispatchAction, DispatchTarget, Grid},
+    grid::{DispatchTarget, Grid},
     model::{Car, CarState, Passenger, Point, WaitingPassenger},
     osrm::{OsrmClient, interpolate},
 };
@@ -124,23 +124,32 @@ impl Simulator {
         }
     }
 
-    /// Execute one simulation micro-step after Python has supplied matching pairs.
-    pub async fn advance_step(
-        &mut self,
-        matches: Vec<(String, String)>,
-        action: Option<DispatchAction>,
-    ) -> Result<f64> {
+    /// Apply matching without advancing time, so the policy can observe the
+    /// exact idle fleet that is available for dispatch.
+    pub async fn apply_matches(&mut self, matches: Vec<(String, String)>) -> Result<f64> {
         let served_before = self.total_served;
         let passengers = std::mem::take(&mut self.pending_passengers);
         if !passengers.is_empty() {
             self.plan_matches(matches, passengers).await?;
         }
-        if let Some(action) = action {
-            self.dispatch_action(&action).await?;
+        Ok((self.total_served - served_before) as f64)
+    }
+
+    /// Dispatch the current idle fleet, then complete one 10-second micro-step.
+    pub async fn advance(&mut self, proportions: Option<&[Vec<f64>]>) -> Result<()> {
+        if let Some(proportions) = proportions {
+            self.dispatch_proportions(proportions).await?;
         }
         self.update_positions();
         self.current_time += self.config.simulation.batch_interval_s;
-        Ok((self.total_served - served_before) as f64)
+        Ok(())
+    }
+
+    /// Execute an ordinary matching-only micro-step between dispatch boundaries.
+    pub async fn advance_step(&mut self, matches: Vec<(String, String)>) -> Result<f64> {
+        let reward = self.apply_matches(matches).await?;
+        self.advance(None).await?;
+        Ok(reward)
     }
 
     pub fn observation(&self) -> Vec<f32> {
@@ -230,7 +239,7 @@ impl Simulator {
         Ok(())
     }
 
-    async fn dispatch_action(&mut self, action: &DispatchAction) -> Result<()> {
+    async fn dispatch_proportions(&mut self, proportions: &[Vec<f64>]) -> Result<()> {
         let idle_indices: Vec<usize> = self
             .cars
             .iter()
@@ -238,55 +247,50 @@ impl Simulator {
             .filter(|(_, car)| car.state == CarState::Idle && car.position().is_some())
             .map(|(index, _)| index)
             .collect();
-        if idle_indices.is_empty() || matches!(action, DispatchAction::None) {
+        if idle_indices.is_empty() {
             return Ok(());
         }
 
-        let targets = match action {
-            DispatchAction::None => Vec::new(),
-            DispatchAction::FlowMatrix { counts } => {
-                anyhow::ensure!(
-                    counts.len() == self.grid.len(),
-                    "flow matrix has {} rows; expected {}",
-                    counts.len(),
-                    self.grid.len()
-                );
-                let mut cars_by_origin = vec![Vec::new(); self.grid.len()];
-                for &car_index in &idle_indices {
-                    let origin = self
-                        .grid
-                        .point_index(self.cars[car_index].position().unwrap());
-                    cars_by_origin[origin].push(car_index);
-                }
-                let mut targets = Vec::with_capacity(idle_indices.len());
-                for origin in 0..self.grid.len() {
-                    let row = &counts[origin];
-                    anyhow::ensure!(
-                        row.len() == self.grid.len(),
-                        "flow matrix row {origin} has {} columns; expected {}",
-                        row.len(),
-                        self.grid.len()
+        anyhow::ensure!(
+            proportions.len() == self.grid.len(),
+            "proportion matrix has {} rows; expected {}",
+            proportions.len(),
+            self.grid.len()
+        );
+        let mut cars_by_origin = vec![Vec::new(); self.grid.len()];
+        for &car_index in &idle_indices {
+            let origin = self
+                .grid
+                .point_index(self.cars[car_index].position().unwrap());
+            cars_by_origin[origin].push(car_index);
+        }
+        let mut targets = Vec::with_capacity(idle_indices.len());
+        for origin in 0..self.grid.len() {
+            let row = &proportions[origin];
+            anyhow::ensure!(
+                row.len() == self.grid.len(),
+                "proportion matrix row {origin} has {} columns; expected {}",
+                row.len(),
+                self.grid.len()
+            );
+            let counts = proportion_row_to_counts(row, cars_by_origin[origin].len(), origin)?;
+            let mut cursor = 0;
+            for (destination, &count) in counts.iter().enumerate() {
+                let end = cursor + count;
+                if destination != origin {
+                    let point = self.grid.center(destination).expect("validated grid index");
+                    targets.extend(
+                        cars_by_origin[origin][cursor..end]
+                            .iter()
+                            .map(|&car_index| DispatchTarget {
+                                car_id: self.cars[car_index].id.clone(),
+                                point,
+                            }),
                     );
-                    let effective = rescale_flow_row(row, cars_by_origin[origin].len(), origin);
-                    let mut cursor = 0;
-                    for (destination, &count) in effective.iter().enumerate() {
-                        let end = cursor + count;
-                        if destination != origin {
-                            let point =
-                                self.grid.center(destination).expect("validated grid index");
-                            targets.extend(cars_by_origin[origin][cursor..end].iter().map(
-                                |&car_index| DispatchTarget {
-                                    car_id: self.cars[car_index].id.clone(),
-                                    point,
-                                },
-                            ));
-                        }
-                        cursor = end;
-                    }
                 }
-                targets
+                cursor = end;
             }
-        };
+        }
         self.dispatch_targets(&targets).await
     }
 
@@ -402,22 +406,25 @@ impl Simulator {
     }
 }
 
-/// Matching runs before rebalancing and may consume some vehicles observed by
-/// the policy. Preserve the requested destination proportions while resizing
-/// the integer row to the vehicles that remain idle.
-fn rescale_flow_row(row: &[usize], available: usize, origin: usize) -> Vec<usize> {
+/// Convert one policy row to integer vehicle counts exactly once, using the
+/// idle fleet measured after matching at the dispatch boundary.
+fn proportion_row_to_counts(row: &[f64], available: usize, origin: usize) -> Result<Vec<usize>> {
     let mut result = vec![0; row.len()];
+    anyhow::ensure!(
+        row.iter().all(|value| value.is_finite() && *value >= 0.0),
+        "proportion matrix contains invalid values"
+    );
     if available == 0 {
-        return result;
+        return Ok(result);
     }
-    let requested: usize = row.iter().sum();
-    if requested == 0 {
+    let total: f64 = row.iter().sum();
+    if total <= f64::EPSILON {
         result[origin] = available;
-        return result;
+        return Ok(result);
     }
     let quotas: Vec<f64> = row
         .iter()
-        .map(|&count| available as f64 * count as f64 / requested as f64)
+        .map(|&proportion| available as f64 * proportion / total)
         .collect();
     for (destination, quota) in quotas.iter().enumerate() {
         result[destination] = quota.floor() as usize;
@@ -432,7 +439,7 @@ fn rescale_flow_row(row: &[usize], available: usize, origin: usize) -> Vec<usize
     for &destination in order.iter().take(available - assigned) {
         result[destination] += 1;
     }
-    result
+    Ok(result)
 }
 
 fn load_passengers(
@@ -461,11 +468,11 @@ fn load_passengers(
 
 #[cfg(test)]
 mod tests {
-    use super::rescale_flow_row;
+    use super::proportion_row_to_counts;
 
     #[test]
-    fn rescales_requested_counts_to_remaining_idle_vehicles() {
-        let row = rescale_flow_row(&[7, 2, 1], 6, 0);
+    fn converts_proportions_using_post_matching_idle_vehicles() {
+        let row = proportion_row_to_counts(&[0.7, 0.2, 0.1], 6, 0).unwrap();
         assert_eq!(row.iter().sum::<usize>(), 6);
         assert_eq!(row, vec![4, 1, 1]);
     }

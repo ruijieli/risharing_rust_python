@@ -27,8 +27,9 @@ Python 只负责：
 - `training/evaluate.py`：模型评估、测速和实时可视化入口。
 
 Python 负责在每个小步计算车辆匹配，并将匹配关系与调度动作提交给 Rust。
-调度算法接收 Rust 生成的网格观测，负责把 PPO 比例、DQN 离散动作或其他
-算法结果转换成整数车辆流量矩阵。后续新增算法只需编辑 `python_algorithms`。
+调度算法接收周期边界匹配后的网格观测，统一输出连续比例矩阵。
+Rust 再根据实际空闲车辆数转换成整数流量。后续新增算法只需编辑
+`python_algorithms`。
 
 ## 前置服务
 
@@ -62,7 +63,7 @@ conda activate RL
 也可临时指定算法（其 `[training.options]` 必须与该算法匹配）：
 
 ```bash
-./scripts/train.sh dqn config.toml
+./scripts/train.sh sac config.toml
 ```
 
 训练脚本会自动构建 Python 可调用的 Rust 扩展，输出位置由
@@ -72,7 +73,9 @@ conda activate RL
 models/ppo_ridesharing_model.zip
 ```
 
-所有训练参数都集中在 `config.toml` 的 `[training]`。
+所有训练参数都集中在 `config.toml` 的 `[training]`。使用 SAC 时，
+`[training.options]` 至少需提供 `total_timesteps`、`output_path`、
+`learning_rate`、`buffer_size`、`learning_starts` 和 `batch_size`。
 
 ## 评估、测速与可视化
 

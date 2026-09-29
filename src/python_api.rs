@@ -54,17 +54,20 @@ impl RustSimulation {
         self.environment.matching_input_json().map_err(py_error)
     }
 
-    #[pyo3(signature = (matches, counts=None))]
-    fn step(
-        &mut self,
-        matches: Vec<(String, String)>,
-        counts: Option<Vec<Vec<usize>>>,
-    ) -> PyResult<PythonStep> {
+    fn step(&mut self, matches: Vec<(String, String)>) -> PyResult<PythonStep> {
         self.environment
-            .step(
-                matches,
-                counts.map(|counts| crate::grid::DispatchAction::FlowMatrix { counts }),
-            )
+            .step(matches)
+            .map(environment_step_to_python)
+            .map_err(py_error)
+    }
+
+    fn apply_matches(&mut self, matches: Vec<(String, String)>) -> PyResult<f64> {
+        self.environment.apply_matches(matches).map_err(py_error)
+    }
+
+    fn advance(&mut self, proportions: Vec<Vec<f64>>) -> PyResult<PythonStep> {
+        self.environment
+            .advance(proportions)
             .map(environment_step_to_python)
             .map_err(py_error)
     }

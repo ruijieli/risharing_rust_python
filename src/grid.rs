@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use anyhow::{Result, ensure};
 use h3o::{CellIndex, LatLng, Resolution};
-use serde::{Deserialize, Serialize};
 
 use crate::{
     config::Config,
@@ -15,13 +14,6 @@ pub struct Grid {
     cells: Vec<CellIndex>,
     index: HashMap<CellIndex, usize>,
     centers: Vec<Point>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum DispatchAction {
-    None,
-    FlowMatrix { counts: Vec<Vec<usize>> },
 }
 
 #[derive(Clone, Debug)]

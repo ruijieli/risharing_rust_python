@@ -16,7 +16,7 @@ def first_pair(cars, passengers, *, threshold_m, options, project_dir):
     return [[cars[0]["id"], passengers[0]["id"]]]
 
 
-@dispatch.register("stay", action_mode="continuous")
+@dispatch.register("stay")
 def stay(state, options, project_dir):
     assert options == {"student_option": 9}
     assert project_dir == str(root)
@@ -50,22 +50,19 @@ dispatch_input = {
 action = dispatch.choose_action(
     dispatch_input["observation"], "random", dispatch_input["options"], dispatch_input["project_dir"]
 )
-assert action["kind"] == "flow_matrix" and len(action["counts"]) == 3, action
-assert [sum(row) for row in action["counts"]] == [1, 0, 0], action
-assert dispatch.action_mode("none") == "none"
-assert dispatch.action_mode("ppo") == "continuous"
-assert dispatch.action_mode("dqn") == "discrete"
+assert action["kind"] == "proportions" and len(action["values"]) == 3, action
+assert dispatch.available_algorithms() == ("none", "ppo", "random", "sac", "stay")
 custom_dispatch_input = dict(dispatch_input, options={"student_option": 9})
 custom_action = dispatch.choose_action(
     custom_dispatch_input["observation"], "stay", custom_dispatch_input["options"],
     custom_dispatch_input["project_dir"],
 )
-assert custom_action["counts"] == [[1, 0, 0], [0, 0, 0], [0, 0, 0]], custom_action
+assert custom_action["values"] == __import__("numpy").eye(3).tolist(), custom_action
 none_action = dispatch.evaluation_action(
     __import__("numpy").asarray(dispatch_input["observation"], dtype="float32"),
     "none",
     dispatch_input["options"],
     dispatch_input["project_dir"],
 )
-assert none_action == 0, none_action
+assert none_action.tolist() == __import__("numpy").eye(3).tolist(), none_action
 print("Python algorithm interface: OK")

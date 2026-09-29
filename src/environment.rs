@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     config::Config,
-    grid::{DispatchAction, Grid},
+    grid::Grid,
     simulator::Simulator,
     web::{SharedSnapshot, build_snapshot},
 };
@@ -76,14 +76,28 @@ impl RustEnvironment {
         self.simulator.grid_cell_ids()
     }
 
-    pub fn step(
-        &mut self,
-        matches: Vec<(String, String)>,
-        action: Option<DispatchAction>,
-    ) -> Result<EnvironmentStep> {
+    pub fn step(&mut self, matches: Vec<(String, String)>) -> Result<EnvironmentStep> {
         let reward = self
             .runtime
-            .block_on(self.simulator.advance_step(matches, action))?;
+            .block_on(self.simulator.advance_step(matches))?;
+        self.environment_step(reward)
+    }
+
+    pub fn apply_matches(&mut self, matches: Vec<(String, String)>) -> Result<f64> {
+        let reward = self
+            .runtime
+            .block_on(self.simulator.apply_matches(matches))?;
+        self.publish_snapshot();
+        Ok(reward)
+    }
+
+    pub fn advance(&mut self, proportions: Vec<Vec<f64>>) -> Result<EnvironmentStep> {
+        self.runtime
+            .block_on(self.simulator.advance(Some(&proportions)))?;
+        self.environment_step(0.0)
+    }
+
+    fn environment_step(&mut self, reward: f64) -> Result<EnvironmentStep> {
         self.publish_snapshot();
         Ok(EnvironmentStep {
             observation: self.observation(),

@@ -44,10 +44,9 @@ def main() -> None:
         sys.path.insert(0, str(algorithm_dir))
     import dispatch
 
-    action_mode = dispatch.action_mode(algorithm) # 返回动作是连续的还是离散的
-    env = RustRideSharingEnv(config_path, dispatch_algorithm=algorithm)
+    env = RustRideSharingEnv(config_path)
     observation, _ = env.reset()
-    print(f"调度算法：{algorithm}；动作模式：{action_mode}")
+    print(f"调度算法：{algorithm}；动作：连续比例矩阵")
     visualization_enabled = bool(config["simulation"]["visualization"])
     if visualization_enabled:
         url = env.start_visualization()
