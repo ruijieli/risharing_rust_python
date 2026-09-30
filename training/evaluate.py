@@ -56,11 +56,6 @@ def main() -> None:
     else:
         print("可视化已关闭；本次评估不会启动网页服务。")
 
-    delay = (
-        float(config["simulation"]["visualization_step_delay_ms"]) / 1000.0
-        if visualization_enabled
-        else 0.0
-    )
     steps = 0
     started = time.perf_counter()
     while True:
@@ -69,8 +64,6 @@ def main() -> None:
         )
         observation, _reward, terminated, truncated, info = env.step(action)
         steps += 1
-        if delay > 0:
-            time.sleep(delay)
         if terminated or truncated:
             break
 

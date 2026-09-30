@@ -2,6 +2,7 @@
 
 import json
 import sys
+import time
 from pathlib import Path
 
 import gymnasium as gym
@@ -36,6 +37,11 @@ class RustRideSharingEnv(gym.Env):
         self.matching_algorithm = matching_config["name"]
         self.matching_options = matching_config.get(self.matching_algorithm, {})
         self.project_dir = self.config_path.parent
+        self.visualization_delay_s = (
+            float(config["simulation"]["visualization_step_delay_ms"]) / 1000.0
+            if config["simulation"]["visualization"]
+            else 0.0
+        )
         self.micro_steps = max(
             1,
             int(config["simulation"]["dispatch_cycle_s"])
@@ -72,11 +78,16 @@ class RustRideSharingEnv(gym.Env):
     def _apply_current_matching(self) -> float:
         return float(self.core.apply_matches(self._matching_pairs()))
 
+    def _wait_for_visualization(self) -> None:
+        if self.visualization_delay_s > 0:
+            time.sleep(self.visualization_delay_s)
+
     def step(self, action):
         proportions = self.dispatch.training_action_to_proportions(action, self.num_grids)
         observation, _unused, terminated, truncated, info_json = self.core.advance(
             proportions.tolist()
         )
+        self._wait_for_visualization()
         reward = 0.0
         for _ in range(self.micro_steps - 1):
             if terminated or truncated:
@@ -85,6 +96,7 @@ class RustRideSharingEnv(gym.Env):
                 self._matching_pairs()
             )
             reward += float(micro_reward)
+            self._wait_for_visualization()
         if not (terminated or truncated):
             reward += self._apply_current_matching()
             observation = self.core.observation()

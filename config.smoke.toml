@@ -16,7 +16,7 @@ dispatch_cycle_s = 120
 sample_size = 100
 random_seed = 42
 visualization = false
-visualization_step_delay_ms = 0
+visualization_step_delay_ms = 0 # 每个仿真微步的可视化停留时间；0 表示不等待
 keep_visualization_alive = false
 
 [osrm]
